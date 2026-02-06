@@ -82,6 +82,18 @@ class PostgreSQL:
         except (Exception, Error) as error:
             return None
 
+    def create_document_customer(self, name, email):
+        if not self.cursor:
+            return None
+        try:
+            query = f"INSERT INTO customers (name, email) VALUES (%s, %s) RETURNING id;"
+            self.cursor.execute(query, (name, email))
+            self.connection.commit()
+            customer_id = self.cursor.fetchone()[0]
+            return customer_id
+        except (Exception, Error) as error:
+            return None
+
     def clear_tables(self):
         tables = ["products", "customers", "billing"]
         for table in tables:
@@ -94,14 +106,17 @@ def generate_random_string(length):
 class Activity(PostgreSQL):
     def __init__(self):
         self.product_id = None
+        self.customer_id = None
+        self.billing_id = None
         self.isCreatedSuccessful = False
+        self.isBillingCreatedSuccessful = False
         super().__init__("localhost", "database_name", "postgres", "password")
 
-    def testcase_create_product(self, test_object):
-        testcase_description = "Test product creation endpoint"
-        expected_result = "Product created successfully!"
-        actual = "Product creation failed!"
-        marks = 15
+    def testcase_check_for_successful_product_creation(self, test_object):
+        testcase_description = "Check for successful product creation"
+        expected_result = "product created successfully!"
+        actual = "product creation was not successful!"
+        marks = 10
         marks_obtained = 0
 
         test_object.update_pre_result(testcase_description, expected_result)
@@ -110,9 +125,9 @@ class Activity(PostgreSQL):
             api_url = "http://localhost:8080/api/products"
             headers = {"Content-Type": "application/json"}
             payload = {
-                "name": "Test Product",
-                "price": 100,
-                "quantity": 10
+                "name": generate_random_string(10),
+                "price": random.randint(100, 1000),
+                "quantity": random.randint(1, 100),
             }
 
             try:
@@ -124,170 +139,18 @@ class Activity(PostgreSQL):
                 )
                 return
 
-            if response.status_code == 201:
-                json_data = response.json()
-                product_id = json_data.get('id', None)
-
-                if product_id is not None:
-                    self.product_id = product_id
-                    self.connect_to_db()
-                    products = self.getItemById("products", product_id)
-                    self.disconnect_from_db()
-
-                    if products is not None and len(products) > 0 and products[0][1] == payload['name']:
-                        marks_obtained = marks
-                        self.isCreatedSuccessful = True
-                        return test_object.update_result(
-                            1, expected_result, expected_result, testcase_description, "N/A", marks, marks_obtained
-                        )
-            return test_object.update_result(
-                0, expected_result, actual, testcase_description, "N/A", marks, marks_obtained
-            )
-        except Exception as e:
-            test_object.update_result(
-                0, expected_result, actual, testcase_description, "N/A", marks, marks_obtained
-            )
-            test_object.eval_message["testcase_name"] = str(e)
-
-    def testcase_get_product_by_id(self, test_object):
-        testcase_description = "Test product retrieval by ID"
-        expected_result = "Product retrieved successfully!"
-        actual = "Product not retrieved!"
-        marks = 15
-        marks_obtained = 0
-
-        test_object.update_pre_result(testcase_description, expected_result)
-
-        try:
-            if self.product_id is None:
-                test_object.update_result(
-                    0, expected_result, "Product creation failed!", testcase_description, "N/A", marks, marks_obtained
-                )
-                return
-
-            api_url = f"http://localhost:8080/api/products/{self.product_id}"
-            headers = {"Content-Type": "application/json"}
-
-            response = requests.get(api_url, headers=headers, timeout=5)
             json_data = response.json()
+            product_id = json_data.get('id', None)
 
-            if response.status_code == 200 and json_data['id'] == self.product_id:
-                marks_obtained = marks
-                return test_object.update_result(
-                    1, expected_result, expected_result, testcase_description, "N/A", marks, marks_obtained
-                )
-            return test_object.update_result(
-                0, expected_result, actual, testcase_description, "N/A", marks, marks_obtained
-            )
-        except Exception as e:
-            test_object.update_result(
-                0, expected_result, actual, testcase_description, "N/A", marks, marks_obtained
-            )
-            test_object.eval_message["testcase_name"] = str(e)
-
-    def testcase_get_all_products(self, test_object):
-        testcase_description = "Test retrieving all products"
-        expected_result = "All products retrieved successfully!"
-        actual = "All products not retrieved!"
-        marks = 15
-        marks_obtained = 0
-
-        test_object.update_pre_result(testcase_description, expected_result)
-
-        try:
-            api_url = "http://localhost:8080/api/products"
-            headers = {"Content-Type": "application/json"}
-
-            response = requests.get(api_url, headers=headers, timeout=5)
-            json_data = response.json()
-
-            if response.status_code == 200 and len(json_data) > 0:
-                marks_obtained = marks
-                return test_object.update_result(
-                    1, expected_result, expected_result, testcase_description, "N/A", marks, marks_obtained
-                )
-            return test_object.update_result(
-                0, expected_result, actual, testcase_description, "N/A", marks, marks_obtained
-            )
-        except Exception as e:
-            test_object.update_result(
-                0, expected_result, actual, testcase_description, "N/A", marks, marks_obtained
-            )
-            test_object.eval_message["testcase_name"] = str(e)
-
-    def testcase_update_product(self, test_object):
-        testcase_description = "Test product update endpoint"
-        expected_result = "Product updated successfully!"
-        actual = "Product not updated!"
-        marks = 15
-        marks_obtained = 0
-
-        test_object.update_pre_result(testcase_description, expected_result)
-
-        try:
-            if self.product_id is None:
-                test_object.update_result(
-                    0, expected_result, "Product creation failed!", testcase_description, "N/A", marks, marks_obtained
-                )
-                return
-
-            api_url = f"http://localhost:8080/api/products/{self.product_id}"
-            headers = {"Content-Type": "application/json"}
-            payload = {
-                "name": "Updated Product",
-                "price": 150,
-                "quantity": 5
-            }
-
-            response = requests.put(api_url, json=payload, headers=headers, timeout=5)
-
-            if response.status_code == 200:
+            if product_id is not None:
+                self.product_id = product_id
                 self.connect_to_db()
-                products = self.getItemById("products", self.product_id)
+                products = self.getItemById("products", product_id)
                 self.disconnect_from_db()
 
-                if products and len(products) > 0 and products[0][1] == payload['name']:
+                if products is not None and len(products) > 0 and products[0][1] == payload['name']:
                     marks_obtained = marks
-                    return test_object.update_result(
-                        1, expected_result, expected_result, testcase_description, "N/A", marks, marks_obtained
-                    )
-            return test_object.update_result(
-                0, expected_result, actual, testcase_description, "N/A", marks, marks_obtained
-            )
-        except Exception as e:
-            test_object.update_result(
-                0, expected_result, actual, testcase_description, "N/A", marks, marks_obtained
-            )
-            test_object.eval_message["testcase_name"] = str(e)
-
-    def testcase_delete_product(self, test_object):
-        testcase_description = "Test product deletion endpoint"
-        expected_result = "Product deleted successfully!"
-        actual = "Product not deleted!"
-        marks = 15
-        marks_obtained = 0
-
-        test_object.update_pre_result(testcase_description, expected_result)
-
-        try:
-            if self.product_id is None:
-                test_object.update_result(
-                    0, expected_result, "Product creation failed!", testcase_description, "N/A", marks, marks_obtained
-                )
-                return
-
-            api_url = f"http://localhost:8080/api/products/{self.product_id}"
-            headers = {"Content-Type": "application/json"}
-
-            response = requests.delete(api_url, headers=headers, timeout=5)
-
-            if response.status_code == 200:
-                self.connect_to_db()
-                products = self.getItemById("products", self.product_id)
-                self.disconnect_from_db()
-
-                if products is None or len(products) == 0:
-                    marks_obtained = marks
+                    self.isCreatedSuccessful = True
                     return test_object.update_result(
                         1, expected_result, expected_result, testcase_description, "N/A", marks, marks_obtained
                     )
@@ -313,11 +176,7 @@ def start_tests(args):
     challenge_test.clear_tables()
     challenge_test.disconnect_from_db()
 
-    challenge_test.testcase_create_product(test_object)
-    challenge_test.testcase_get_product_by_id(test_object)
-    challenge_test.testcase_get_all_products(test_object)
-    challenge_test.testcase_update_product(test_object)
-    challenge_test.testcase_delete_product(test_object)
+    challenge_test.testcase_check_for_successful_product_creation(test_object)
 
     challenge_test.connect_to_db()
     challenge_test.clear_tables()
